@@ -10,6 +10,7 @@ import re
 import tempfile
 import codecs
 import os
+import uuid
 
 from warnings import warn
 
@@ -1827,7 +1828,11 @@ class Worksheet(xmlwriter.XMLwriter):
             'mid_color': 1,
             'max_color': 1,
             'multi_range': 1,
-            'bar_color': 1}
+            'bar_color': 1,
+            'bar_fill': 1,
+            'negative_bar_color': 1,
+            'axis_position': 1,
+            'axis_color': 1}
 
         # Check for valid input parameters.
         for param_key in options.keys():
@@ -2112,7 +2117,6 @@ class Worksheet(xmlwriter.XMLwriter):
 
         # Special handling for data bar.
         if options['type'] == 'dataBar':
-
             # Color scales don't use any additional formatting.
             options['format'] = None
 
@@ -2121,7 +2125,21 @@ class Worksheet(xmlwriter.XMLwriter):
             options.setdefault('min_value', 0)
             options.setdefault('max_value', 0)
             options.setdefault('bar_color', '#638EC6')
+            if self.excel_version == '2010':
+                options.setdefault('bar_fill', 1)
+                if options['bar_fill'] == 'solid':
+                    options['bar_fill'] = 0
+                else:
+                    options['bar_fill'] = 1
+                options.setdefault('negative_bar_color', options['bar_color'])
+                options.setdefault('axis_position', None)
+                options.setdefault('axis_color', '#000000')
+                options['axis_color'] = xl_color(options['axis_color'])
 
+                if options['negative_bar_color'] is not None:
+                    options['negative_bar_color'] = xl_color(
+                        options['negative_bar_color'])
+                options['extid'] = str(uuid.uuid4()).upper()
             options['bar_color'] = xl_color(options['bar_color'])
 
         # Store the validation information until we close the worksheet.
@@ -3241,7 +3259,7 @@ class Worksheet(xmlwriter.XMLwriter):
         self._write_table_parts()
 
         # Write the extLst and sparklines.
-        self._write_ext_sparklines()
+        self._write_ext_list()
 
         # Close the worksheet tag.
         self._xml_end_tag('worksheet')
@@ -5564,6 +5582,8 @@ class Worksheet(xmlwriter.XMLwriter):
         elif params['type'] == 'dataBar':
             self._xml_start_tag('cfRule', attributes)
             self._write_data_bar(params)
+            if self.excel_version == '2010':
+                self._write_ext_id(params)
             self._xml_end_tag('cfRule')
 
         elif params['type'] == 'expression':
@@ -5608,12 +5628,19 @@ class Worksheet(xmlwriter.XMLwriter):
     def _write_data_bar(self, param):
         # Write the <dataBar> element.
         self._xml_start_tag('dataBar')
-
         self._write_cfvo(param['min_type'], param['min_value'])
         self._write_cfvo(param['max_type'], param['max_value'])
         self._write_color('rgb', param['bar_color'])
-
         self._xml_end_tag('dataBar')
+
+    def _write_ext_id(self, param):
+        self._xml_start_tag('extLst')
+        self._write_ext('{B025F937-C7B1-47D3-B67F-A62EFF666E3E}')
+        self._xml_start_tag('x14:id')
+        self.fh.write(param['extid'].join(['{', '}']))
+        self._xml_end_tag('x14:id')
+        self._xml_end_tag('ext')
+        self._xml_end_tag('extLst')
 
     def _write_cfvo(self, cf_type, val):
         # Write the <cfvo> element.
@@ -5626,6 +5653,18 @@ class Worksheet(xmlwriter.XMLwriter):
         attributes = [(name, value)]
 
         self._xml_empty_tag('color', attributes)
+
+    def _write_negative_color(self, name, value):
+        #Write the <negativeFillColor> element
+        attributes = [(name, value)]
+
+        self._xml_empty_tag('negativeFillColor', attributes)
+
+    def _write_axis_color(self, name, value):
+         #Write the <axisColor> element
+        attributes = [(name, value)]
+
+        self._xml_empty_tag('axisColor', attributes)
 
     def _write_selections(self):
         # Write the <selection> elements.
@@ -5839,6 +5878,16 @@ class Worksheet(xmlwriter.XMLwriter):
 
         self._xml_empty_tag('tablePart', attributes)
 
+    def _write_ext_list(self):
+        if not len(self.sparklines) and (not len(self.cond_formats.keys()) and not self.excel_version == '2010'):
+            return
+
+        # Write the extLst element.
+        self._xml_start_tag('extLst')
+        self._write_ext_sparklines()
+        self._write_ext_cond_formats()
+        self._xml_end_tag('extLst')
+
     def _write_ext_sparklines(self):
         # Write the <extLst> element and sparkline sub-elements.
         sparklines = self.sparklines
@@ -5847,9 +5896,6 @@ class Worksheet(xmlwriter.XMLwriter):
         # Return if worksheet doesn't contain any sparklines.
         if not count:
             return
-
-        # Write the extLst element.
-        self._xml_start_tag('extLst')
 
         # Write the ext element.
         self._write_ext()
@@ -5896,7 +5942,38 @@ class Worksheet(xmlwriter.XMLwriter):
 
         self._xml_end_tag('x14:sparklineGroups')
         self._xml_end_tag('ext')
-        self._xml_end_tag('extLst')
+
+    def _write_ext_cond_formats(self):
+        if (not len(self.cond_formats.keys()) and not self.excel_version == '2010'):
+            return
+
+        wrote_start_tags = False
+        for cond_range, param in self.cond_formats.iteritems():
+            param = param[0]
+            if param['type'] == 'dataBar':
+                if not wrote_start_tags:
+                    self._write_ext('{78C0D931-6437-407d-A8EE-F0AAD7539E65}')
+                    self._xml_start_tag('x14:conditionalFormattings')
+                    wrote_start_tags = True
+                self._xml_start_tag('x14:conditionalFormatting', [('xmlns:xm', 'http://schemas.microsoft.com/office/excel/2006/main')])
+                self._xml_start_tag('x14:cfRule', [('type', param['type']), ('id', param['extid'].join(['{', '}']))])
+                attributes = [('minLength', param['min_value']), ('maxLength', param['max_value']), ('gradient', param['bar_fill'])]
+                if not param['axis_position'] == 'auto' or param['axis_position'] is not None:
+                    attributes.append(('axisPosition', param['axis_position']))
+                self._xml_start_tag('x14:dataBar', attributes)
+                self._xml_empty_tag('x14:cfvo', [('type', 'autoMin')])
+                self._xml_empty_tag('x14:cfvo', [('type', 'autoMax')])
+                self._xml_empty_tag('x14:negativeFillColor', [('rgb', param['negative_bar_color'])])
+                self._xml_empty_tag('x14:axisColor', [('rgb', param['axis_color'])])
+                self._xml_end_tag('x14:dataBar')
+                self._xml_end_tag('x14:cfRule')
+                self._xml_start_tag('xm:sqref')
+                self.fh.write(cond_range)
+                self._xml_end_tag('xm:sqref')
+                self._xml_end_tag('x14:conditionalFormatting')
+        if wrote_start_tags:
+            self._xml_end_tag('x14:conditionalFormattings')
+            self._xml_end_tag('ext')
 
     def _write_sparklines(self, sparkline):
         # Write the <x14:sparklines> element and <x14:sparkline> sub-elements.
@@ -5915,11 +5992,12 @@ class Worksheet(xmlwriter.XMLwriter):
 
         self._xml_end_tag('x14:sparklines')
 
-    def _write_ext(self):
+    def _write_ext(self, uri=None):
         # Write the <ext> element.
         schema = 'http://schemas.microsoft.com/office/'
         xmlns_x_14 = schema + 'spreadsheetml/2009/9/main'
-        uri = '{05C60535-1F16-4fd2-B633-F4F36F0B64E0}'
+        if not uri:
+            uri = '{05C60535-1F16-4fd2-B633-F4F36F0B64E0}'
 
         attributes = [
             ('xmlns:x14', xmlns_x_14),
