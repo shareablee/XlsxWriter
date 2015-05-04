@@ -172,8 +172,11 @@ The series options that can be set are:
 * ``border``: Set the border properties of the series such as colour and
   style. See :ref:`chart_formatting_border`.
 
-* ``fill``: Set the fill properties of the series such as colour. See
+* ``fill``: Set the solid fill properties of the series such as colour. See
   :ref:`chart_formatting_fill`.
+
+* ``gradient``: Set the gradient fill properties of the series. See
+  :ref:`chart_formatting_gradient`.
 
 * ``marker``: Set the properties of the series marker such as style and
   colour. See :ref:`chart_series_option_marker`.
@@ -263,6 +266,9 @@ The options that can be set are::
     name_layout
     num_font
     num_format
+    line
+    fill
+    gradient
     min
     max
     minor_unit
@@ -277,8 +283,11 @@ The options that can be set are::
     minor_gridlines
     visible
     date_axis
+    text_axis
     minor_unit_type
     major_unit_type
+    display_units
+    display_units_visible
 
 These options are explained below. Some properties are only applicable to
 **value**, **category** or **date** axes (this is noted in each case). See
@@ -333,6 +342,19 @@ the axis types.
   apart from the fact that a format index cannot be used. An explicit format
   string must be used as shown above. See :func:`set_num_format()` for more
   information.
+
+* ``line``: Set the properties of the axis line type such as colour and
+  width. See :ref:`chart_formatting_line`::
+
+    chart.set_x_axis({'line': {'none': True}})
+
+* ``fill``: Set the solid fill properties of the axis such as colour. See
+  :ref:`chart_formatting_fill`.  Note, in Excel the axis fill is applied to
+  the area of the numbers of the axis and not to the area of the axis bounding
+  box. That background is set from the chartarea fill.
+
+* ``gradient``: Set the gradient fill properties of the axis. See
+  :ref:`chart_formatting_gradient`.
 
 * ``min``: Set the minimum value for the axis range. (Applicable to value and
   date axes only.)::
@@ -454,6 +476,11 @@ the axis types.
 
   See :ref:`date_category_axes` for more details.
 
+* ``text_axis``: This option is used to treat a category axis explicitly
+  as a Text Axis. (Applicable to category axes only.)::
+
+    chart.set_x_axis({'text_axis': True})
+
 * ``minor_unit_type``: For ``date_axis`` axes, see above, this option is used
   to set the type of the minor units. (Applicable to date category axes
   only.)::
@@ -466,6 +493,36 @@ the axis types.
 
 * ``major_unit_type``: Same as ``minor_unit_type``, see above, but for major
   axes unit types.
+
+* ``display_units``: Set the display units for the axis. This can be useful if
+  the axis numbers are very large but you don't want to represent them in
+  scientific notation. The available display units are::
+
+    hundreds
+    thousands
+    ten_thousands
+    hundred_thousands
+    millions
+    ten_millions
+    hundred_millions
+    billions
+    trillions
+
+  Applicable to value axes only.::
+
+    chart.set_x_axis({'display_units': 'thousands'})
+    chart.set_y_axis({'display_units': 'millions'})
+
+  .. image:: _images/chart_display_units.png
+     :scale: 75 %
+
+
+* ``display_units_visible``: Control the visibility of the display units
+  turned on by the previous option. This option is on by default. (Applicable
+  to value axes only.)::
+
+    chart.set_x_axis({'display_units': 'hundreds',
+                      'display_units_visible': False})
 
 
 chart.set_y_axis()
@@ -522,6 +579,36 @@ The default properties for this axis are::
     'major_gridlines': {'visible': True}
 
 
+chart.combine()
+---------------
+
+.. py:function:: combine(chart)
+
+   Combine two charts of different types.
+
+   :param chart: A chart object created with :func:`add_chart()`.
+
+The chart ``combine()`` method is used to combine two charts of different
+types, for example a column and line chart::
+
+    # Create a primary chart.
+    column_chart = workbook.add_chart({'type': 'column'})
+    column_chart.add_series({...})
+
+    # Create a secondary chart.
+    line_chart = workbook.add_chart({'type': 'line'})
+    line_chart.add_series({...})
+
+    # Combine the charts.
+    column_chart.combine(line_chart)
+
+.. image:: _images/chart_combined1.png
+   :scale: 75 %
+
+
+See the :ref:`chart_combined_charts` section for more details.
+
+
 chart.set_size()
 ----------------
 
@@ -547,7 +634,7 @@ The ``width`` and ``height`` are in pixels. The default chart width x height is
 
     chart.set_size({'width': 720, 'height': 576})
     # Same as:
-    chart.set_size({'x_scale', 1.5, 'y_scale', 2})
+    chart.set_size({'x_scale': 1.5, 'y_scale': 2})
 
 The ``x_offset`` and ``y_offset`` position the top left corner of the chart in
 the cell that it is inserted into.
@@ -713,10 +800,13 @@ In Excel the chart area is the background area behind the chart::
 The properties that can be set are:
 
 * ``border``: Set the border properties of the chartarea such as colour and
-  style. See :ref:`chart_formatting`.
+  style. See :ref:`chart_formatting_border`.
 
-* ``fill``: Set the fill properties of the chartarea such as colour. See
-  :ref:`chart_formatting`.
+* ``fill``: Set the solid fill properties of the chartarea such as colour. See
+  :ref:`chart_formatting_fill`.
+
+* ``gradient``: Set the gradient fill properties of the chartarea. See
+  :ref:`chart_formatting_gradient`.
 
 
 
@@ -744,10 +834,13 @@ series are plotted::
 The properties that can be set are:
 
 * ``border``: Set the border properties of the plotarea such as colour and
-  style. See :ref:`chart_formatting`.
+  style. See :ref:`chart_formatting_border`.
 
-* ``fill``: Set the fill properties of the plotarea such as colour. See
-  :ref:`chart_formatting`.
+* ``fill``: Set the solid fill properties of the plotarea such as colour. See
+  :ref:`chart_formatting_fill`.
+
+* ``gradient``: Set the gradient fill properties of the plotarea. See
+  :ref:`chart_formatting_gradient`.
 
 * ``layout``: Set the ``(x, y)`` position of the plotarea in chart relative
   units::
@@ -783,6 +876,14 @@ The ``set_style()`` method is used to set the style of the chart to one of the
 
 The style index number is counted from 1 on the top left. The default style is
 2.
+
+.. Note::
+
+   In Excel 2013 the Styles section of the 'Design' tab in Excel shows what
+   were referred to as 'Layouts' in previous versions of Excel. These layouts
+   are not defined in the file format. They are a collection of modifications
+   to the base chart type. They can be replicated using the XlsxWriter Chart
+   API but they cannot be defined by the ``set_style()`` method.
 
 
 chart.set_table()
@@ -828,8 +929,8 @@ the difference between the first and last data series::
 
     chart.set_up_down_bars()
 
-It is possible to format the up and down bars to add ``fill`` and ``border``
-properties if required. See :ref:`chart_formatting`::
+It is possible to format the up and down bars to add ``fill``, or ``gradient``
+and ``border`` properties if required. See :ref:`chart_formatting`::
 
     chart.set_up_down_bars({
         'up': {

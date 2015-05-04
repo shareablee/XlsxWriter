@@ -2,7 +2,7 @@
 #
 # Worksheet - A class for writing the Excel XLSX Worksheet file.
 #
-# Copyright 2013-2014, John McNamara, jmcnamara@cpan.org
+# Copyright 2013-2015, John McNamara, jmcnamara@cpan.org
 #
 
 # Standard packages.
@@ -24,6 +24,7 @@ from .compatibility import num_types, str_types
 from . import xmlwriter
 from .format import Format
 from .drawing import Drawing
+from .shape import Shape
 from .xmlwriter import XMLwriter
 from .utility import xl_rowcol_to_cell
 from .utility import xl_rowcol_to_cell_fast
@@ -34,6 +35,7 @@ from .utility import xl_color
 from .utility import get_sparkline_style
 from .utility import supported_datetime
 from .utility import datetime_to_excel_datetime
+from .utility import quote_sheetname
 
 
 ###############################################################################
@@ -191,21 +193,25 @@ class Worksheet(xmlwriter.XMLwriter):
         self.active_pane = 3
         self.selected = 0
 
-        self.page_setup_changed = 0
+        self.page_setup_changed = False
         self.paper_size = 0
         self.orientation = 1
 
-        self.print_options_changed = 0
+        self.print_options_changed = False
         self.hcenter = 0
         self.vcenter = 0
         self.print_gridlines = 0
         self.screen_gridlines = 1
         self.print_headers = 0
 
-        self.header_footer_changed = 0
+        self.header_footer_changed = False
         self.header = ''
         self.footer = ''
-        self.header_footer_aligns = False
+        self.header_footer_aligns = True
+        self.header_footer_scales = True
+        self.header_images = []
+        self.footer_images = []
+        self.header_images_list = []
 
         self.margin_left = 0.7
         self.margin_right = 0.7
@@ -248,7 +254,7 @@ class Worksheet(xmlwriter.XMLwriter):
         self.outline_below = 1
         self.outline_right = 1
         self.outline_on = 1
-        self.outline_changed = 0
+        self.outline_changed = False
 
         self.original_row_height = 15
         self.default_row_height = 15
@@ -262,14 +268,16 @@ class Worksheet(xmlwriter.XMLwriter):
         self.merge = []
         self.row_spans = {}
 
-        self.has_vml = 0
-        self.has_comments = 0
+        self.has_vml = False
+        self.has_header_vml = False
+        self.has_comments = False
         self.comments = defaultdict(dict)
-        self.comments_array = []
+        self.comments_list = []
         self.comments_author = ''
         self.comments_visible = 0
         self.vml_shape_id = 1024
-        self.buttons_array = []
+        self.buttons_list = []
+        self.vml_header_id = 0
 
         self.autofilter_area = ''
         self.autofilter_ref = None
@@ -282,8 +290,8 @@ class Worksheet(xmlwriter.XMLwriter):
         self.col_sizes = {}
         self.row_sizes = {}
         self.col_formats = {}
-        self.col_size_changed = 0
-        self.row_size_changed = 0
+        self.col_size_changed = False
+        self.row_size_changed = False
 
         self.last_shape_id = 1
         self.rel_count = 0
@@ -295,6 +303,7 @@ class Worksheet(xmlwriter.XMLwriter):
         self.external_vml_links = []
         self.external_table_links = []
         self.drawing_links = []
+        self.vml_drawing_links = []
         self.charts = []
         self.images = []
         self.tables = []
@@ -319,6 +328,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
         self.strings_to_numbers = False
         self.strings_to_urls = True
+        self.nan_inf_to_errors = False
         self.strings_to_formulas = True
 
         self.default_date_format = None
@@ -333,6 +343,9 @@ class Worksheet(xmlwriter.XMLwriter):
         self.row_data_filename = None
         self.row_data_fh = None
         self.row_data_fh_closed = False
+
+        self.vertical_dpi = 0
+        self.horizontal_dpi = 0
 
     @convert_cell_args
     def write(self, row, col, *args):
@@ -395,7 +408,8 @@ class Worksheet(xmlwriter.XMLwriter):
             elif self.strings_to_numbers:
                 try:
                     f = float(token)
-                    if not self._isnan(f) and not self._isinf(f):
+                    if (self.nan_inf_to_errors or
+                            (not self._isnan(f) and not self._isinf(f))):
                         return self.write_number(row, col, f, *args[1:])
                 except ValueError:
                     # Not a number, write as a string.
@@ -410,8 +424,7 @@ class Worksheet(xmlwriter.XMLwriter):
         # We haven't matched a supported type. Try float.
         try:
             f = float(token)
-            if not self._isnan(f) and not self._isinf(f):
-                return self.write_number(row, col, f, *args[1:])
+            return self.write_number(row, col, f, *args[1:])
         except ValueError:
             pass
         except TypeError:
@@ -484,7 +497,17 @@ class Worksheet(xmlwriter.XMLwriter):
 
         """
         if self._isnan(number) or self._isinf(number):
-            raise TypeError("NAN/INF not supported in write_number()")
+            if self.nan_inf_to_errors:
+                if self._isnan(number):
+                    return self.write_formula(row, col, '#NUM!', cell_format,
+                                              '#NUM!')
+                elif self._isinf(number):
+                    return self.write_formula(row, col, '1/0', cell_format,
+                                              '#DIV/0!')
+            else:
+                raise TypeError(
+                    "NAN/INF not supported in write_number() "
+                    "without 'nan_inf_to_errors' Workbook() option")
 
         # Check that row and col are valid and store max and min values.
         if self._check_dimensions(row, col):
@@ -1019,7 +1042,7 @@ class Worksheet(xmlwriter.XMLwriter):
             row:      The cell row (zero indexed).
             col:      The cell column (zero indexed).
             filename: Path and filename for image in PNG, JPG or BMP format.
-            options:  Position, scale, url and data stram of the image.
+            options:  Position, scale, url and data stream of the image.
         Returns:
             0:  Success.
         """
@@ -1032,8 +1055,35 @@ class Worksheet(xmlwriter.XMLwriter):
         anchor = options.get('positioning', None)
         image_data = options.get('image_data', None)
 
+        if not image_data and not os.path.exists(filename):
+            warn("Image file '%s' not found." % filename)
+            return -1
+
         self.images.append([row, col, filename, x_offset, y_offset,
                             x_scale, y_scale, url, tip, anchor, image_data])
+
+    @convert_cell_args
+    def insert_textbox(self, row, col, text, options=None):
+        """
+        Insert an textbox with its top-left corner in a worksheet cell.
+        Args:
+            row:      The cell row (zero indexed).
+            col:      The cell column (zero indexed).
+            text:     The text for the textbox.
+            options:  Textbox options.
+        Returns:
+            0:  Success.
+        """
+        if options is None:
+            options = {}
+
+        x_offset = options.get('x_offset', 0)
+        y_offset = options.get('y_offset', 0)
+        x_scale = options.get('x_scale', 1)
+        y_scale = options.get('y_scale', 1)
+
+        self.shapes.append([row, col, x_offset, y_offset,
+                            x_scale, y_scale, text, options])
 
     @convert_cell_args
     def insert_chart(self, row, col, chart, options={}):
@@ -1048,6 +1098,19 @@ class Worksheet(xmlwriter.XMLwriter):
         Returns:
             0:  Success.
         """
+
+        # Ensure a chart isn't inserted more than once.
+        if (chart.already_inserted or chart.combined
+                and chart.combined.already_inserted):
+
+            warn('Chart cannot be inserted in a worksheet more than once.')
+            return
+        else:
+            chart.already_inserted = True
+
+            if chart.combined:
+                chart.combined.already_inserted = True
+
         x_offset = options.get('x_offset', 0)
         y_offset = options.get('y_offset', 0)
         x_scale = options.get('x_scale', 1)
@@ -1271,7 +1334,7 @@ class Worksheet(xmlwriter.XMLwriter):
                                            collapsed]
 
         # Store the column change to allow optimisations.
-        self.col_size_changed = 1
+        self.col_size_changed = True
 
         # Store the col sizes for use when calculating image vertices taking
         # hidden columns into account. Also store the column formats.
@@ -1338,7 +1401,7 @@ class Worksheet(xmlwriter.XMLwriter):
         self.set_rows[row] = [height, cell_format, hidden, level, collapsed]
 
         # Store the row change to allow optimisations.
-        self.row_size_changed = 1
+        self.row_size_changed = True
 
         if hidden:
             height = 0
@@ -1363,7 +1426,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
         if height != self.original_row_height:
             # Store the row change to allow optimisations.
-            self.row_size_changed = 1
+            self.row_size_changed = True
             self.default_row_height = height
 
         if hide_unused_rows:
@@ -1404,7 +1467,7 @@ class Worksheet(xmlwriter.XMLwriter):
             (first_col, last_col) = (last_col, first_col)
 
         # Check that column number is valid and store the max value
-        if self._check_dimensions(last_row, first_col):
+        if self._check_dimensions(last_row, last_col):
             return
 
         # Store the merge range.
@@ -1595,7 +1658,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
         # Check for valid input parameters.
         for param_key in options.keys():
-            if not param_key in valid_parameters:
+            if param_key not in valid_parameters:
                 warn("Unknown parameter 'param_key' in data_validation()")
                 return -2
 
@@ -1606,7 +1669,7 @@ class Worksheet(xmlwriter.XMLwriter):
             options['value'] = options['minimum']
 
         # 'validate' is a required parameter.
-        if not 'validate' in options:
+        if 'validate' not in options:
             warn("Parameter 'validate' is required in data_validation()")
             return -2
 
@@ -1645,7 +1708,7 @@ class Worksheet(xmlwriter.XMLwriter):
             options['maximum'] = None
 
         # 'criteria' is a required parameter.
-        if not 'criteria' in options:
+        if 'criteria' not in options:
             warn("Parameter 'criteria' is required in data_validation()")
             return -2
 
@@ -1680,7 +1743,7 @@ class Worksheet(xmlwriter.XMLwriter):
         # 'Between' and 'Not between' criteria require 2 values.
         if (options['criteria'] == 'between' or
                 options['criteria'] == 'notBetween'):
-            if not 'maximum' in options:
+            if 'maximum' not in options:
                 warn("Parameter 'maximum' is required in data_validation() "
                      "when using 'between' or 'not between' criteria")
                 return -2
@@ -1695,7 +1758,7 @@ class Worksheet(xmlwriter.XMLwriter):
         }
 
         # Check for valid error dialog types.
-        if not 'error_type' in options:
+        if 'error_type' not in options:
             options['error_type'] = 0
         elif not options['error_type'] in error_types:
             warn("Unknown criteria type '%s' for parameter 'error_type' "
@@ -1761,13 +1824,13 @@ class Worksheet(xmlwriter.XMLwriter):
                 return -2
 
         # Set some defaults if they haven't been defined by the user.
-        if not 'ignore_blank' in options:
+        if 'ignore_blank' not in options:
             options['ignore_blank'] = 1
-        if not 'dropdown' in options:
+        if 'dropdown' not in options:
             options['dropdown'] = 1
-        if not 'show_input' in options:
+        if 'show_input' not in options:
             options['show_input'] = 1
-        if not 'show_error' in options:
+        if 'show_error' not in options:
             options['show_error'] = 1
 
         # These are the cells to which the validation is applied.
@@ -2112,7 +2175,7 @@ class Worksheet(xmlwriter.XMLwriter):
             options['max_color'] = xl_color(options['max_color'])
 
             # Set a default mid value.
-            if not 'mid_value' in options:
+            if 'mid_value' not in options:
                 options['mid_value'] = 50
 
         # Special handling for data bar.
@@ -2163,7 +2226,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
         Returns:
             0:  Success.
-            -1: Not supported in optimisation mode.
+            -1: supported not in optimisation mode.
             -2: Row or column is out of worksheet bounds.
             -3: Incorrect parameter or option.
         """
@@ -2200,7 +2263,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
         # Check for valid input parameters.
         for param_key in options.keys():
-            if not param_key in valid_parameter:
+            if param_key not in valid_parameter:
                 warn("Unknown parameter '%s' in add_table()" % param_key)
                 return -3
 
@@ -2271,6 +2334,7 @@ class Worksheet(xmlwriter.XMLwriter):
                 'name': 'Column' + str(col_id),
                 'total_string': '',
                 'total_function': '',
+                'total_value': 0,
                 'formula': '',
                 'format': None,
             }
@@ -2324,7 +2388,10 @@ class Worksheet(xmlwriter.XMLwriter):
                             self._table_function_to_formula(function,
                                                             col_data['name'])
 
-                        self.write_formula(last_row, col_num, formula, xformat)
+                        value = user_data.get('total_value', 0)
+
+                        self.write_formula(last_row, col_num, formula, xformat,
+                                           value)
 
                     elif user_data.get('total_string'):
                         # Total label only (not a function).
@@ -2428,12 +2495,12 @@ class Worksheet(xmlwriter.XMLwriter):
 
         # Check for valid input parameters.
         for param_key in options.keys():
-            if not param_key in valid_parameters:
+            if param_key not in valid_parameters:
                 warn("Unknown parameter '%s' in add_sparkline()" % param_key)
                 return -1
 
         # 'range' is a required parameter.
-        if not 'range' in options:
+        if 'range' not in options:
             warn("Parameter 'range' is required in add_sparkline()")
             return -2
 
@@ -2474,7 +2541,7 @@ class Worksheet(xmlwriter.XMLwriter):
         sparkline['count'] = len(sparkline['locations'])
 
         # Get the worksheet name for the range conversion below.
-        sheetname = self._quote_sheetname(self.name)
+        sheetname = quote_sheetname(self.name)
 
         # Cleanup the input ranges.
         new_ranges = []
@@ -2617,7 +2684,7 @@ class Worksheet(xmlwriter.XMLwriter):
         self.outline_right = outline_right
         self.outline_style = outline_style
 
-        self.outline_changed = 1
+        self.outline_changed = True
 
     @convert_cell_args
     def freeze_panes(self, row, col, top_row=None, left_col=None, pane_type=0):
@@ -2768,6 +2835,27 @@ class Worksheet(xmlwriter.XMLwriter):
 
         self.protect_options = defaults
 
+    @convert_cell_args
+    def insert_button(self, row, col, options={}):
+        """
+        Insert a button form object into the worksheet.
+
+        Args:
+            row:     The cell row (zero indexed).
+            col:     The cell column (zero indexed).
+            options: Button formatting options.
+
+        Returns:
+            0:  Success.
+            -1: Row or column is out of worksheet bounds.
+
+        """
+        button = self._button_params(row, col, options)
+
+        self.buttons_list.append(button)
+
+        self.has_vml = 1
+
     ###########################################################################
     #
     # Public API. Page Setup methods.
@@ -2785,7 +2873,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
         """
         self.orientation = 0
-        self.page_setup_changed = 1
+        self.page_setup_changed = True
 
     def set_portrait(self):
         """
@@ -2799,7 +2887,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
         """
         self.orientation = 1
-        self.page_setup_changed = 1
+        self.page_setup_changed = True
 
     def set_page_view(self):
         """
@@ -2827,7 +2915,7 @@ class Worksheet(xmlwriter.XMLwriter):
         """
         if paper_size:
             self.paper_size = paper_size
-            self.page_setup_changed = 1
+            self.page_setup_changed = True
 
     def center_horizontally(self):
         """
@@ -2840,7 +2928,7 @@ class Worksheet(xmlwriter.XMLwriter):
             Nothing.
 
         """
-        self.print_options_changed = 1
+        self.print_options_changed = True
         self.hcenter = 1
 
     def center_vertically(self):
@@ -2854,7 +2942,7 @@ class Worksheet(xmlwriter.XMLwriter):
             Nothing.
 
         """
-        self.print_options_changed = 1
+        self.print_options_changed = True
         self.vcenter = 1
 
     def set_margins(self, left=0.7, right=0.7, top=0.75, bottom=0.75):
@@ -2876,45 +2964,149 @@ class Worksheet(xmlwriter.XMLwriter):
         self.margin_top = top
         self.margin_bottom = bottom
 
-    def set_header(self, header='', margin=0.3):
+    def set_header(self, header='', options=None, margin=None):
         """
         Set the page header caption and optional margin.
 
         Args:
-            header: Header string.
-            margin: Header margin.
+            header:  Header string.
+            margin:  Header margin.
+            options: Header options, mainly for images.
 
         Returns:
             Nothing.
 
         """
+        header_orig = header
+        header = header.replace('&[Picture]', '&G')
+
         if len(header) >= 255:
             warn('Header string must be less than 255 characters')
             return
 
-        self.header = header
-        self.margin_header = margin
-        self.header_footer_changed = 1
+        if options is not None:
+            # For backward compatibility allow options to be the margin.
+            if not isinstance(options, dict):
+                options = {'margin': options}
+        else:
+            options = {}
 
-    def set_footer(self, footer='', margin=0.3):
+        # For backward compatibility.
+        if margin is not None:
+            options['margin'] = margin
+
+        # Reset the list in case the function is called more than once.
+        self.header_images = []
+
+        if options.get('image_left'):
+            self.header_images.append([options.get('image_left'),
+                                       options.get('image_data_left'),
+                                       'LH'])
+
+        if options.get('image_center'):
+            self.header_images.append([options.get('image_center'),
+                                       options.get('image_data_center'),
+                                       'CH'])
+
+        if options.get('image_right'):
+            self.header_images.append([options.get('image_right'),
+                                       options.get('image_data_right'),
+                                       'RH'])
+
+        placeholder_count = header.count('&G')
+        image_count = len(self.header_images)
+
+        if placeholder_count != image_count:
+            warn("Number of header images (%s) doesn't match placeholder "
+                 "count (%s) in string: %s"
+                 % (image_count, placeholder_count, header_orig))
+            self.header_images = []
+            return
+
+        if 'align_with_margins' in options:
+            self.header_footer_aligns = options['align_with_margins']
+
+        if 'scale_with_doc' in options:
+            self.header_footer_scales = options['scale_with_doc']
+
+        self.header = header
+        self.margin_header = options.get('margin', 0.3)
+        self.header_footer_changed = True
+
+        if image_count:
+            self.has_header_vml = True
+
+    def set_footer(self, footer='', options=None, margin=None):
         """
         Set the page footer caption and optional margin.
 
         Args:
-            footer: Footer string.
-            margin: Footer margin.
+            footer:  Footer string.
+            margin:  Footer margin.
+            options: Footer options, mainly for images.
 
         Returns:
             Nothing.
 
         """
+        footer_orig = footer
+        footer = footer.replace('&[Picture]', '&G')
+
         if len(footer) >= 255:
             warn('Footer string must be less than 255 characters')
             return
 
+        if options is not None:
+            # For backward compatibility allow options to be the margin.
+            if not isinstance(options, dict):
+                options = {'margin': options}
+        else:
+            options = {}
+
+        # For backward compatibility.
+        if margin is not None:
+            options['margin'] = margin
+
+        # Reset the list in case the function is called more than once.
+        self.footer_images = []
+
+        if options.get('image_left'):
+            self.footer_images.append([options.get('image_left'),
+                                       options.get('image_data_left'),
+                                       'LF'])
+
+        if options.get('image_center'):
+            self.footer_images.append([options.get('image_center'),
+                                       options.get('image_data_center'),
+                                       'CF'])
+
+        if options.get('image_right'):
+            self.footer_images.append([options.get('image_right'),
+                                       options.get('image_data_right'),
+                                       'RF'])
+
+        placeholder_count = footer.count('&G')
+        image_count = len(self.footer_images)
+
+        if placeholder_count != image_count:
+            warn("Number of footer images (%s) doesn't match placeholder "
+                 "count (%s) in string: %s"
+                 % (image_count, placeholder_count, footer_orig))
+            self.footer_images = []
+            return
+
+        if 'align_with_margins' in options:
+            self.header_footer_aligns = options['align_with_margins']
+
+        if 'scale_with_doc' in options:
+            self.header_footer_scales = options['scale_with_doc']
+
         self.footer = footer
-        self.margin_footer = margin
-        self.header_footer_changed = 1
+        self.margin_footer = options.get('margin', 0.3)
+        self.header_footer_changed = True
+
+        if image_count:
+            self.has_header_vml = True
 
     def repeat_rows(self, first_row, last_row=None):
         """
@@ -2939,7 +3131,7 @@ class Worksheet(xmlwriter.XMLwriter):
         area = '$%d:$%d' % (first_row, last_row)
 
         # Build up the print titles area "Sheet1!$1:$2"
-        sheetname = self._quote_sheetname(self.name)
+        sheetname = quote_sheetname(self.name)
         self.repeat_row_range = sheetname + '!' + area
 
     @convert_column_args
@@ -2966,7 +3158,7 @@ class Worksheet(xmlwriter.XMLwriter):
         area = first_col + ':' + last_col
 
         # Build up the print area range "=Sheet2!$C:$D"
-        sheetname = self._quote_sheetname(self.name)
+        sheetname = quote_sheetname(self.name)
         self.repeat_col_range = sheetname + "!" + area
 
     def hide_gridlines(self, option=1):
@@ -2985,7 +3177,7 @@ class Worksheet(xmlwriter.XMLwriter):
         if option == 0:
             self.print_gridlines = 1
             self.screen_gridlines = 1
-            self.print_options_changed = 1
+            self.print_options_changed = True
         elif option == 1:
             self.print_gridlines = 0
             self.screen_gridlines = 1
@@ -3005,7 +3197,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
         """
         self.print_headers = 1
-        self.print_options_changed = 1
+        self.print_options_changed = True
 
     @convert_range_args
     def print_area(self, first_row, first_col, last_row, last_col):
@@ -3048,7 +3240,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
         """
         self.page_order = 1
-        self.page_setup_changed = 1
+        self.page_setup_changed = True
 
     def fit_to_pages(self, width, height):
         """
@@ -3066,7 +3258,7 @@ class Worksheet(xmlwriter.XMLwriter):
         self.fit_page = 1
         self.fit_width = width
         self.fit_height = height
-        self.page_setup_changed = 1
+        self.page_setup_changed = True
 
     def set_start_page(self, start_page):
         """
@@ -3080,7 +3272,6 @@ class Worksheet(xmlwriter.XMLwriter):
 
         """
         self.page_start = start_page
-        self.custom_start = 1
 
     def set_print_scale(self, scale):
         """
@@ -3102,7 +3293,7 @@ class Worksheet(xmlwriter.XMLwriter):
         self.fit_page = 0
 
         self.print_scale = int(scale)
-        self.page_setup_changed = 1
+        self.page_setup_changed = True
 
     def set_h_pagebreaks(self, breaks):
         """
@@ -3117,11 +3308,6 @@ class Worksheet(xmlwriter.XMLwriter):
         """
         self.hbreaks = breaks
 
-    #
-    # set_v_pagebreaks(@breaks)
-    #
-    # Store the vertical page breaks on a worksheet.
-    #
     def set_v_pagebreaks(self, breaks):
         """
         Set the horizontal page breaks on a worksheet.
@@ -3134,6 +3320,23 @@ class Worksheet(xmlwriter.XMLwriter):
 
         """
         self.vbreaks = breaks
+
+    def set_vba_name(self, name=None):
+        """
+        Set the VBA name for the worksheet. By default this is the
+        same as the sheet name: i.e., Sheet1 etc.
+
+        Args:
+            name: The VBA name for the worksheet.
+
+        Returns:
+            Nothing.
+
+        """
+        if name is not None:
+            self.vba_codename = name
+        else:
+            self.vba_codename = self.name
 
     ###########################################################################
     #
@@ -3151,6 +3354,7 @@ class Worksheet(xmlwriter.XMLwriter):
         self.strings_to_numbers = init_data['strings_to_numbers']
         self.strings_to_formulas = init_data['strings_to_formulas']
         self.strings_to_urls = init_data['strings_to_urls']
+        self.nan_inf_to_errors = init_data['nan_inf_to_errors']
         self.default_date_format = init_data['default_date_format']
         self.default_url_format = init_data['default_url_format']
         self.excel2003_style = init_data['excel2003_style']
@@ -3165,7 +3369,7 @@ class Worksheet(xmlwriter.XMLwriter):
             self.margin_bottom = 1
             self.margin_header = 0.5
             self.margin_footer = 0.5
-            self.header_footer_aligns = 1
+            self.header_footer_aligns = False
 
         # Open a temp filehandle to store row data in optimization mode.
         if self.optimization == 1:
@@ -3255,6 +3459,9 @@ class Worksheet(xmlwriter.XMLwriter):
         # Write the legacyDrawing element.
         self._write_legacy_drawing()
 
+        # Write the legacyDrawingHF element.
+        self._write_legacy_drawing_hf()
+
         # Write the tableParts element.
         self._write_table_parts()
 
@@ -3275,6 +3482,8 @@ class Worksheet(xmlwriter.XMLwriter):
         # flags are use by set_row() and data_validate.
 
         # Check that the row/col are within the worksheet bounds.
+        if row < 0 or col < 0:
+            return -1
         if row >= self.xls_rowmax or col >= self.xls_colmax:
             return -1
 
@@ -3301,65 +3510,6 @@ class Worksheet(xmlwriter.XMLwriter):
     def _convert_date_time(self, dt_obj):
         # Convert a datetime object to an Excel serial date and time.
         return datetime_to_excel_datetime(dt_obj, self.date_1904)
-
-    def _options_changed(self):
-        # Check to see if any of the worksheet options have changed.
-        options_changed = 0
-        print_changed = 0
-        setup_changed = 0
-
-        if (self.orientation == 0
-                or self.hcenter == 1
-                or self.vcenter == 1
-                or self.header != ''
-                or self.footer != ''
-                or self.margin_header != 0.50
-                or self.margin_footer != 0.50
-                or self.margin_left != 0.75
-                or self.margin_right != 0.75
-                or self.margin_top != 1.00
-                or self.margin_bottom != 1.00):
-            setup_changed = 1
-
-        # Special case for 1x1 page fit.
-        if self.fit_width == 1 and self.fit_height == 1:
-            options_changed = 1
-            self.fit_width = 0
-            self.fit_height = 0
-
-        if (self.fit_width > 1
-                or self.fit_height > 1
-                or self.page_order == 1
-                or self.black_white == 1
-                or self.draft_quality == 1
-                or self.print_comments == 1
-                or self.paper_size != 0
-                or self.print_scale != 100
-                or self.print_gridlines == 1
-                or self.print_headers == 1
-                or self.hbreaks > 0
-                or self.vbreaks > 0):
-            print_changed = 1
-
-        if print_changed or setup_changed:
-            options_changed = 1
-
-        if self.screen_gridlines == 0:
-            options_changed = 1
-        if self.filter_on:
-            options_changed = 1
-
-        return options_changed, print_changed, setup_changed
-
-    def _quote_sheetname(self, sheetname):
-        # Sheetnames used in references should be quoted if they
-        # contain any spaces, special characters or if the look like
-        # something that isn't a sheet name.
-        # TODO. Probably need to handle more special cases.
-        if re.match(r'Sheet\d+', sheetname):
-            return sheetname
-        else:
-            return "'%s'" % sheetname
 
     def _convert_name_area(self, row_num_1, col_num_1, row_num_2, col_num_2):
         # Convert zero indexed rows and columns to the format required by
@@ -3396,7 +3546,7 @@ class Worksheet(xmlwriter.XMLwriter):
             area = range1 + ':' + range2
 
         # Build up the print area range "Sheet1!$A$1:$C$13".
-        sheetname = self._quote_sheetname(self.name)
+        sheetname = quote_sheetname(self.name)
         area = sheetname + "!" + area
 
         return area
@@ -3545,7 +3695,7 @@ class Worksheet(xmlwriter.XMLwriter):
             # Only allow Equals or NotEqual in this context.
             if operator != 2 and operator != 5:
                 warn("The operator '%s' in expression '%s' "
-                     "is not valid in relation to Blanks/NonBlanks'"
+                     "is valid not in relation to Blanks/NonBlanks'"
                      % (tokens[1], expression))
 
             token = token.lower()
@@ -3597,7 +3747,7 @@ class Worksheet(xmlwriter.XMLwriter):
         return "%X" % password_hash
 
     def _prepare_image(self, index, image_id, drawing_id, width, height,
-                       name, image_type):
+                       name, image_type, x_dpi, y_dpi):
         # Set up images/drawings.
         drawing_type = 2
         (row, col, _, x_offset, y_offset,
@@ -3605,6 +3755,10 @@ class Worksheet(xmlwriter.XMLwriter):
 
         width *= x_scale
         height *= y_scale
+
+        # Scale by non 96dpi resoultions.
+        width *= 96.0 / x_dpi
+        height *= 96.0 / y_dpi
 
         dimensions = self._position_object_emus(col, row, x_offset, y_offset,
                                                 width, height)
@@ -3652,6 +3806,64 @@ class Worksheet(xmlwriter.XMLwriter):
                                    '../media/image'
                                    + str(image_id) + '.'
                                    + image_type])
+
+    def _prepare_shape(self, index, drawing_id):
+        # Set up shapes/drawings.
+        drawing_type = 3
+
+        (row, col, x_offset, y_offset,
+            x_scale, y_scale, text, options) = self.shapes[index]
+
+        width = options.get('width', self.default_col_pixels * 3)
+        height = options.get('height', self.default_row_pixels * 6)
+
+        width *= x_scale
+        height *= y_scale
+
+        dimensions = self._position_object_emus(col, row, x_offset, y_offset,
+                                                width, height)
+
+        # Convert from pixels to emus.
+        width = int(0.5 + (width * 9525))
+        height = int(0.5 + (height * 9525))
+
+        # Create a Drawing obj to use with worksheet unless one already exists.
+        if not self.drawing:
+            drawing = Drawing()
+            drawing.embedded = 1
+            self.drawing = drawing
+
+            self.external_drawing_links.append(['/drawing',
+                                                '../drawings/drawing'
+                                                + str(drawing_id)
+                                                + '.xml', None])
+        else:
+            drawing = self.drawing
+
+        shape = Shape('rect', 'TextBox', options)
+        shape.text = text
+
+        drawing_object = [drawing_type]
+        drawing_object.extend(dimensions)
+        drawing_object.extend([width, height, None, shape, None,
+                               None, None])
+
+        drawing._add_drawing_object(drawing_object)
+
+    def _prepare_header_image(self, image_id, width, height, name, image_type,
+                              position, x_dpi, y_dpi):
+        # Set up an image without a drawing object for header/footer images.
+
+        # Strip the extension from the filename.
+        name = re.sub('\..*$', '', name)
+
+        self.header_images_list.append([width, height, name, position,
+                                        x_dpi, y_dpi])
+
+        self.vml_drawing_links.append(['/image',
+                                       '../media/image'
+                                       + str(image_id) + '.'
+                                       + image_type])
 
     def _prepare_chart(self, index, chart_id, drawing_id):
         # Set up chart/drawings.
@@ -3982,7 +4194,7 @@ class Worksheet(xmlwriter.XMLwriter):
         params['width'] = int(0.5 + params['width'])
         params['height'] = int(0.5 + params['height'])
 
-        # Calculate the positions of comment object.
+        # Calculate the positions of the comment object.
         vertices = self._position_object_pixels(
             params['start_col'], params['start_row'], params['x_offset'],
             params['y_offset'], params['width'], params['height'])
@@ -3994,7 +4206,71 @@ class Worksheet(xmlwriter.XMLwriter):
         return ([row, col, string, params['author'],
                  params['visible'], params['color']] + [vertices])
 
-    def _prepare_vml_objects(self, vml_data_id, vml_shape_id, comment_id):
+    def _button_params(self, row, col, options):
+        # This method handles the parameters passed to insert_button() as well
+        # as calculating the comment object position and vertices.
+
+        default_height = self.default_row_pixels
+        default_width = self.default_col_pixels
+
+        button_number = 1 + len(self.buttons_list)
+        button = {'row': row, 'col': col, 'font': {}}
+        params = {}
+
+        # Overwrite the defaults with any user supplied values. Incorrect or
+        # misspelled parameters are silently ignored.
+        for key in options.keys():
+            params[key] = options[key]
+
+        # Set the button caption.
+        caption = params.get('caption')
+
+        # Set a default caption if none was specified by user.
+        if caption is None:
+            caption = 'Button %d' % button_number
+
+        button['font']['caption'] = caption
+
+        # Set the macro name.
+        if params.get('macro'):
+            button['macro'] = '[0]!' + params['macro']
+        else:
+            button['macro'] = '[0]!Button%d_Click' % button_number
+
+        # Ensure that a width and height have been set.
+        params['width'] = params.get('width', default_width)
+        params['height'] = params.get('height', default_height)
+
+        # Set the x/y offsets.
+        params['x_offset'] = params.get('x_offset', 0)
+        params['y_offset'] = params.get('y_offset', 0)
+
+        # Scale the size of the button if required.
+        params['width'] = params['width'] * params.get('x_scale', 1)
+        params['height'] = params['height'] * params.get('y_scale', 1)
+
+        # Round the dimensions to the nearest pixel.
+        params['width'] = int(0.5 + params['width'])
+        params['height'] = int(0.5 + params['height'])
+
+        params['start_row'] = row
+        params['start_col'] = col
+
+        # Calculate the positions of the button object.
+        vertices = self._position_object_pixels(
+            params['start_col'], params['start_row'], params['x_offset'],
+            params['y_offset'], params['width'], params['height'])
+
+        # Add the width and height for VML.
+        vertices.append(params['width'])
+        vertices.append(params['height'])
+
+        button['vertices'] = vertices
+
+        return button
+
+    def _prepare_vml_objects(self, vml_data_id, vml_shape_id, vml_drawing_id,
+                             comment_id):
         comments = []
         # Sort the comments into row/column order for easier comparison
         # testing and set the external links for comments and buttons.
@@ -4017,11 +4293,11 @@ class Worksheet(xmlwriter.XMLwriter):
 
         self.external_vml_links.append(['/vmlDrawing',
                                         '../drawings/vmlDrawing'
-                                        + str(comment_id)
+                                        + str(vml_drawing_id)
                                         + '.vml'])
 
         if self.has_comments:
-            self.comments_array = comments
+            self.comments_list = comments
 
             self.external_comment_links.append(['/comments',
                                                 '../comments'
@@ -4040,6 +4316,15 @@ class Worksheet(xmlwriter.XMLwriter):
         self.vml_shape_id = vml_shape_id
 
         return count
+
+    def _prepare_header_vml_objects(self, vml_header_id, vml_drawing_id):
+        # Set up external linkage for VML header/footer images.
+
+        self.vml_header_id = vml_header_id
+
+        self.external_vml_links.append(['/vmlDrawing',
+                                        '../drawings/vmlDrawing'
+                                        + str(vml_drawing_id) + '.vml'])
 
     def _prepare_tables(self, table_id):
         # Set the table ids for the worksheet tables.
@@ -4082,7 +4367,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
     def _set_spark_color(self, sparkline, options, user_color):
         # Set the sparkline colour.
-        if not user_color in options:
+        if user_color not in options:
             return
 
         sparkline[user_color] = {'rgb': xl_color(options[user_color])}
@@ -4101,7 +4386,7 @@ class Worksheet(xmlwriter.XMLwriter):
         # Iterate through the table data.
         for row_num in range(row_start, row_end + 1):
             # Store None if row doesn't exist.
-            if not row_num in self.table:
+            if row_num not in self.table:
                 data.append(None)
                 continue
 
@@ -4565,6 +4850,10 @@ class Worksheet(xmlwriter.XMLwriter):
         if self.page_order:
             attributes.append(('pageOrder', "overThenDown"))
 
+        # Set start page for printing.
+        if self.page_start > 1:
+            attributes.append(('firstPageNumber', self.page_start))
+
         # Set page orientation.
         if self.orientation:
             attributes.append(('orientation', 'portrait'))
@@ -4573,7 +4862,14 @@ class Worksheet(xmlwriter.XMLwriter):
 
         # Set start page for printing.
         if self.page_start != 0:
-            attributes.append(('useFirstPageNumber', self.page_start))
+            attributes.append(('useFirstPageNumber', '1'))
+
+        # Set the DPI. Mainly only for testing.
+        if self.vertical_dpi:
+            attributes.append(('verticalDpi', self.vertical_dpi))
+
+        if self.horizontal_dpi:
+            attributes.append(('horizontalDpi', self.horizontal_dpi))
 
         self._xml_empty_tag('pageSetup', attributes)
 
@@ -4606,7 +4902,10 @@ class Worksheet(xmlwriter.XMLwriter):
         # Write the <headerFooter> element.
         attributes = []
 
-        if self.header_footer_aligns:
+        if not self.header_footer_scales:
+            attributes.append(('scaleWithDoc', 0))
+
+        if not self.header_footer_aligns:
             attributes.append(('alignWithMargins', 0))
 
         if self.header_footer_changed:
@@ -4803,8 +5102,11 @@ class Worksheet(xmlwriter.XMLwriter):
 
     def _write_cell(self, row, col, cell):
         # Write the <cell> element.
-        #
         # Note. This is the innermost loop so efficiency is important.
+
+        error_codes = ['#DIV/0!', '#N/A', '#NAME?', '#NULL!',
+                       '#NUM!', '#REF!', '#VALUE!']
+
         cell_range = xl_rowcol_to_cell_fast(row, col)
 
         attributes = [('r', cell_range)]
@@ -4855,11 +5157,22 @@ class Worksheet(xmlwriter.XMLwriter):
                     self._xml_inline_string(string, preserve, attributes)
 
         elif type(cell).__name__ == 'Formula':
-            # Write a formula. First check if the formula value is a string.
-            if isinstance(cell.value, str_types):
-                attributes.append(('t', 'str'))
+            # Write a formula. First check the formula value type.
+            value = cell.value
+            if type(cell.value) == bool:
+                attributes.append(('t', 'b'))
+                if cell.value:
+                    value = 1
+                else:
+                    value = 0
 
-            self._xml_formula_element(cell.formula, cell.value, attributes)
+            elif isinstance(cell.value, str_types):
+                if cell.value in error_codes:
+                    attributes.append(('t', 'e'))
+                else:
+                    attributes.append(('t', 'str'))
+
+            self._xml_formula_element(cell.formula, value, attributes)
 
         elif type(cell).__name__ == 'ArrayFormula':
             # Write a array formula.
@@ -5180,7 +5493,7 @@ class Worksheet(xmlwriter.XMLwriter):
 
         for col in range(col1, col2 + 1):
             # Skip if column doesn't have an active filter.
-            if not col in self.filter_cols:
+            if col not in self.filter_cols:
                 continue
 
             # Retrieve the filter tokens and write the autofilter records.
@@ -5352,6 +5665,19 @@ class Worksheet(xmlwriter.XMLwriter):
         attributes = [('r:id', r_id)]
 
         self._xml_empty_tag('legacyDrawing', attributes)
+
+    def _write_legacy_drawing_hf(self):
+        # Write the <legacyDrawingHF> element.
+        if not self.has_header_vml:
+            return
+
+        # Increment the relationship id for any drawings or comments.
+        self.rel_count += 1
+        r_id = 'rId' + str(self.rel_count)
+
+        attributes = [('r:id', r_id)]
+
+        self._xml_empty_tag('legacyDrawingHF', attributes)
 
     def _write_data_validations(self):
         # Write the <dataValidations> element.

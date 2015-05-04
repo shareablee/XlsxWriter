@@ -2,7 +2,7 @@
 #
 # ChartStock - A class for writing the Excel XLSX Stock charts.
 #
-# Copyright 2013-2014, John McNamara, jmcnamara@cpan.org
+# Copyright 2013-2015, John McNamara, jmcnamara@cpan.org
 #
 
 from . import chart
@@ -38,6 +38,18 @@ class ChartStock(chart.Chart):
         self.x_axis['defaults']['num_format'] = 'dd/mm/yyyy'
         self.x2_axis['defaults']['num_format'] = 'dd/mm/yyyy'
 
+        # Set the available data label positions for this chart type.
+        self.label_position_default = 'right'
+        self.label_positions = {
+            'center': 'ctr',
+            'right': 'r',
+            'left': 'l',
+            'above': 't',
+            'below': 'b',
+            # For backward compatibility.
+            'top': 't',
+            'bottom': 'b'}
+
         self.set_x_axis({})
         self.set_x2_axis({})
 
@@ -59,8 +71,8 @@ class ChartStock(chart.Chart):
     ###########################################################################
 
     def _write_stock_chart(self, args):
-    # Write the <c:stockChart> element.
-    # Overridden to add hi_low_lines().
+        # Write the <c:stockChart> element.
+        # Overridden to add hi_low_lines().
 
         if args['primary_axes']:
             series = self._get_primary_axes_series()

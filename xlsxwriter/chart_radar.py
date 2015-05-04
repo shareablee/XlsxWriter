@@ -2,7 +2,7 @@
 #
 # ChartRadar - A class for writing the Excel XLSX Radar charts.
 #
-# Copyright 2013-2014, John McNamara, jmcnamara@cpan.org
+# Copyright 2013-2015, John McNamara, jmcnamara@cpan.org
 #
 
 from . import chart
@@ -40,6 +40,10 @@ class ChartRadar(chart.Chart):
         # Override and reset the default axis values.
         self.x_axis['defaults']['major_gridlines'] = {'visible': 1}
         self.set_x_axis({})
+
+        # Set the available data label positions for this chart type.
+        self.label_position_default = 'center'
+        self.label_positions = {'center': 'ctr'}
 
         # Hardcode major_tick_mark for now until there is an accessor.
         self.y_axis['major_tick_mark'] = 'cross'

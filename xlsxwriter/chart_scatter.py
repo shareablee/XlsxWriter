@@ -2,7 +2,7 @@
 #
 # ChartScatter - A class for writing the Excel XLSX Scatter charts.
 #
-# Copyright 2013-2014, John McNamara, jmcnamara@cpan.org
+# Copyright 2013-2015, John McNamara, jmcnamara@cpan.org
 #
 
 from . import chart
@@ -40,6 +40,38 @@ class ChartScatter(chart.Chart):
         self.horiz_val_axis = 0
         self.val_axis_postion = 'b'
         self.smooth_allowed = True
+        self.requires_category = True
+
+        # Set the available data label positions for this chart type.
+        self.label_position_default = 'right'
+        self.label_positions = {
+            'center': 'ctr',
+            'right': 'r',
+            'left': 'l',
+            'above': 't',
+            'below': 'b',
+            # For backward compatibility.
+            'top': 't',
+            'bottom': 'b'}
+
+    def combine(self, chart=None):
+        """
+        Create a combination chart with a secondary chart.
+
+        Note: Override parent method to add a warning.
+
+        Args:
+            chart: The secondary chart to combine with the primary chart.
+
+        Returns:
+            Nothing.
+
+        """
+        if chart is None:
+            return
+
+        warn('Combined chart not currently supported with scatter chart '
+             'as the primary chart')
 
     ###########################################################################
     #
@@ -269,7 +301,7 @@ class ChartScatter(chart.Chart):
                                       }
 
         # Turn markers off for subtypes that don't have them.
-        if not 'marker' in subtype:
+        if 'marker' not in subtype:
             # Go through each series and define default values.
             for series in self.series:
                 # Set a marker type unless there is a user defined type.

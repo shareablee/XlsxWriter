@@ -31,13 +31,14 @@ following program::
 
 .. image:: _images/chart_working.png
 
+See also :ref:`chart_examples`.
 
 .. _chart_val_cat_axes:
 
 Chart Value and Category Axes
 -----------------------------
 
-A key point when working with Excel charts is to understand how it
+When working with charts it is important to understand how Excel
 differentiates between a chart axis that is used for series categories and a
 chart axis that is used for series values.
 
@@ -45,7 +46,7 @@ In the example above the X axis is the **category** axis and each of the values
 is evenly spaced and sequential. The Y axis is the **value** axis and points
 are displayed according to their value.
 
-Excel treats the the two types of axis differently and exposes different
+Excel treats these two types of axis differently and exposes different
 properties for each.
 
 As such some of the ``XlsxWriter`` axis properties can be set for a value axis,
@@ -90,6 +91,7 @@ The following properties can be set for ``marker`` formats in a chart::
     size
     border
     fill
+    gradient
 
 The ``type`` property sets the type of marker that is used with a series::
 
@@ -327,7 +329,7 @@ values::
          },
      })
 
-    # or
+     # or
 
      chart.add_series({
          'categories': '=Sheet1!$A$1:$A$5',
@@ -381,6 +383,10 @@ The following properties can be set for ``data_labels`` formats in a chart::
     position
     leader_lines
     percentage
+    separator
+    legend_key
+    num_format
+    font
 
 The ``value`` property turns on the *Value* data label for a series::
 
@@ -414,19 +420,35 @@ The ``position`` property is used to position the data label for a series::
         'data_labels': {'series_name': True, 'position': 'center'},
     })
 
-Valid positions are::
+In Excel the allowable data label positions vary for different chart types.
+The allowable positions are:
 
-    center
-    right
-    left
-    top
-    bottom
-    above        # Same as top
-    below        # Same as bottom
-    inside_base  # Mainly for Bar/Column charts.
-    inside_end   # Pie chart mainly.
-    outside_end  # Pie chart mainly.
-    best_fit     # Pie chart mainly.
++-------------+----------+--------+----------+-------+
+| Position    | Line,    | Bar,   | Pie,     | Area, |
+|             | Scatter, | Column | Doughnut | Radar |
+|             | Stock    |        |          |       |
++=============+==========+========+==========+=======+
+| center      | Yes      | Yes    | Yes      | Yes*  |
++-------------+----------+--------+----------+-------+
+| right       | Yes*     |        |          |       |
++-------------+----------+--------+----------+-------+
+| left        | Yes      |        |          |       |
++-------------+----------+--------+----------+-------+
+| above       | Yes      |        |          |       |
++-------------+----------+--------+----------+-------+
+| below       | Yes      |        |          |       |
++-------------+----------+--------+----------+-------+
+| inside_base |          | Yes    |          |       |
++-------------+----------+--------+----------+-------+
+| inside_end  |          | Yes    | Yes      |       |
++-------------+----------+--------+----------+-------+
+| outside_end |          | Yes*   | Yes      |       |
++-------------+----------+--------+----------+-------+
+| best_fit    |          |        | Yes*     |       |
++-------------+----------+--------+----------+-------+
+
+Note: The * indicates the default position for each chart type in Excel, if
+a position isn't specified.
 
 The ``percentage`` property is used to turn on the display of data labels as a
 *Percentage* for a series. It is mainly used for pie charts::
@@ -437,7 +459,7 @@ The ``percentage`` property is used to turn on the display of data labels as a
     })
 
 The ``leader_lines`` property is used to turn on *Leader Lines* for the data
-label for a series. It is mainly used for pie charts::
+label of a series. It is mainly used for pie charts::
 
     chart.add_series({
         'values':      '=Sheet1!$A$1:$A$6',
@@ -450,7 +472,55 @@ label for a series. It is mainly used for pie charts::
   only appear if the data label is moved manually or if the data labels are
   very close and need to be adjusted automatically.
 
+The ``separator`` property is used to change the separator between multiple
+data label items::
 
+    chart.add_series({
+        'values':      '=Sheet1!$A$1:$A$6',
+        'data_labels': {'value': True, 'category': True, 'separator': "\n"},
+    })
+
+The separator value must be one of the following strings::
+
+            ','
+            ';'
+            '.'
+            '\n'
+            ' '
+
+The ``legend_key`` property is used to turn on the *Legend Key* for the data
+label of a series::
+
+    chart.add_series({
+        'values':      '=Sheet1!$A$1:$A$6',
+        'data_labels': {'value': True, 'legend_key': True},
+    })
+
+
+The ``num_format`` property is used to set the number format for the data
+labels of a series::
+
+     chart.add_series({
+         'values':      '=Sheet1!$A$1:$A$5',
+         'data_labels': {'value': True, 'num_format': '#,##0.00'},
+     })
+
+The number format is similar to the Worksheet Cell Format ``num_format``
+apart from the fact that a format index cannot be used. An explicit format
+string must be used as shown above. See :func:`set_num_format()` for more
+information.
+
+The ``font`` property is used to set the font of the data labels of a series::
+
+     chart.add_series({
+         'values': '=Sheet1!$A$1:$A$5',
+         'data_labels': {
+             'value': True,
+             'font': {'name': 'Consolas'}
+         },
+     })
+
+See :ref:`chart_fonts`.
 
 .. _chart_series_option_points:
 
@@ -545,6 +615,7 @@ elements::
     line
     border
     fill
+    gradient
 
 Chart formatting properties are generally set using dicts::
 
@@ -611,7 +682,7 @@ The ``color`` property sets the color of the ``line``::
 
 The available colours are shown in the main XlsxWriter documentation. It is
 also possible to set the colour of a line with a Html style ``#RRGGBB`` string
-or a limited number named colours, see :ref:`colors`::
+or a limited number of named colours, see :ref:`colors`::
 
     chart.add_series({
         'values': '=Sheet1!$A$1:$A$6',
@@ -682,11 +753,11 @@ property.
 
 .. _chart_formatting_fill:
 
-Chart formatting: Fill
-----------------------
+Chart formatting: Solid Fill
+----------------------------
 
-The fill format is used to specify filled areas of chart objects such as the
-interior of a column or the background of the chart itself.
+The solid fill format is used to specify filled areas of chart objects such as
+the interior of a column or the background of the chart itself.
 
 The following properties can be set for ``fill`` formats in a chart::
 
@@ -715,7 +786,7 @@ The ``color`` property sets the colour of the ``fill`` area::
 
 The available colours are shown in the main XlsxWriter documentation. It is
 also possible to set the colour of a fill with a Html style ``#RRGGBB`` string
-or a limited number named colours, see :ref:`colors`::
+or a limited number of named colours, see :ref:`colors`::
 
     chart.add_series({
         'values': '=Sheet1!$A$1:$A$6',
@@ -735,14 +806,97 @@ which has the same properties as a ``line`` format::
     })
 
 
+.. _chart_formatting_gradient:
+
+Chart formatting: Gradient Fill
+-------------------------------
+
+The gradient fill format is used to specify gradient filled areas of chart
+objects such as the interior of a column or the background of the chart
+itself.
+
+.. image:: _images/chart_gradient.png
+   :scale: 75 %
+
+The following properties can be set for ``gradient`` fill formats in a chart::
+
+    colors:    a list of colors
+    positions: an optional list of positions for the colors
+    type:      the optional type of gradient fill
+    angle:     the optional angle of the linear fill
+
+If gradient fill is used on a chart object it overrides the solid fill
+properties of the object.
+
+The ``colors`` property sets a list of colours that define the ``gradient``::
+
+    chart.set_plotarea({
+        'gradient': {'colors': ['#FFEFD1', '#F0EBD5', '#B69F66']}
+    })
+
+Excel allows between 2 and 10 colours in a gradient but it is unlikely that
+you will require more than 2 or 3.
+
+As with solid fill it is also possible to set the colours of a gradient with a
+Html style ``#RRGGBB`` string or a limited number of named colours, see
+:ref:`colors`::
+
+    chart.add_series({
+        'values':   '=Sheet1!$A$1:$A$6',
+        'gradient': {'colors': ['red', 'green']}
+    })
+
+The ``positions`` defines an optional list of positions, between 0 and 100, of
+where the colours in the gradient are located. Default values are provided for
+``colors`` lists of between 2 and 4 but they can be specified if required::
+
+    chart.add_series({
+        'values': '=Sheet1!$A$1:$A$5',
+        'gradient': {
+            'colors':    ['#DDEBCF', '#156B13'],
+            'positions': [10,        90],
+        }
+    })
+
+
+The ``type`` property can have one of the following values::
+
+    linear        (the default)
+    radial
+    rectangular
+    path
+
+For example::
+
+    chart.add_series({
+        'values': '=Sheet1!$A$1:$A$5',
+        'gradient': {
+            'colors': ['#DDEBCF', '#9CB86E', '#156B13'],
+            'type': 'radial'
+        }
+    })
+
+If ``type`` isn't specified it defaults to ``linear``.
+
+For a ``linear`` fill the angle of the gradient can also be specified::
+
+    chart.add_series({
+        'values': '=Sheet1!$A$1:$A$5',
+        'gradient': {'colors': ['#DDEBCF', '#9CB86E', '#156B13'],
+                     'angle': 45}
+    })
+
+The default angle is 90 degrees.
+
+
 .. _chart_fonts:
 
 Chart Fonts
 -----------
 
 The following font properties can be set for any chart object that they apply
-to (and that are supported by XlsxWriter) such as chart titles, axis labels
-and axis numbering::
+to (and that are supported by XlsxWriter) such as chart titles, axis labels,
+axis numbering and data labels::
 
     name
     size
@@ -753,8 +907,8 @@ and axis numbering::
     color
 
 These properties correspond to the equivalent Worksheet cell Format object
-properties. See the :ref:`format` and :ref:`working_with_formats` sections for
-more details about Format properties and how to set them.
+properties. See the :ref:`format` section for more details about Format
+properties and how to set them.
 
 The following explains the available font properties:
 
@@ -779,7 +933,7 @@ The following explains the available font properties:
 
     chart.set_x_axis({'num_font':  {'underline': True}})
 
-* ``rotation``: Set the font rotation property in the range -90 to 90 deg::
+* ``rotation``: Set the font rotation, angle, property in the range -90 to 90 deg::
 
     chart.set_x_axis({'num_font':  {'rotation': 45}})
 
@@ -1011,8 +1165,104 @@ the ``y2_axis`` or ``x2_axis`` property of the series::
 .. image:: _images/chart_secondary_axis2.png
    :scale: 75 %
 
-Note it isn't currently possible to add a secondary axis of a different chart
-type (for example line and column).
+It is also possible to have a secondary, combined, chart either with a shared
+or secondary axis, see below.
+
+
+.. _chart_combined_charts:
+
+Combined Charts
+---------------
+
+It is also possible to combine two different chart types, for example a column
+and line chart to create a Pareto chart using the Chart :func:`combine()`
+method:
+
+.. image:: _images/chart_pareto.png
+   :scale: 75 %
+
+The combined charts can share the same Y axis like the following example::
+
+    # Usual setup to create workbook and add data...
+
+    # Create a new column chart. This will use this as the primary chart.
+    column_chart = workbook.add_chart({'type': 'column'})
+
+    # Configure the data series for the primary chart.
+    column_chart.add_series({
+        'name':       '=Sheet1!B1',
+        'categories': '=Sheet1!A2:A7',
+        'values':     '=Sheet1!B2:B7',
+    })
+
+    # Create a new column chart. This will use this as the secondary chart.
+    line_chart = workbook.add_chart({'type': 'line'})
+
+    # Configure the data series for the secondary chart.
+    line_chart.add_series({
+        'name':       '=Sheet1!C1',
+        'categories': '=Sheet1!A2:A7',
+        'values':     '=Sheet1!C2:C7',
+    })
+
+    # Combine the charts.
+    column_chart.combine(line_chart)
+
+    # Add a chart title and some axis labels. Note, this is done via the
+    # primary chart.
+    column_chart.set_title({ 'name': 'Combined chart - same Y axis'})
+    column_chart.set_x_axis({'name': 'Test number'})
+    column_chart.set_y_axis({'name': 'Sample length (mm)'})
+
+    # Insert the chart into the worksheet
+    worksheet.insert_chart('E2', column_chart)
+
+
+.. image:: _images/chart_combined1.png
+   :scale: 75 %
+
+
+The secondary chart can also be placed on a secondary axis using the methods
+shown in the previous section.
+
+In this case it is just necessary to add a ``y2_axis`` parameter to the series
+and, if required, add a title using :func:`set_y2_axis()`. The following are
+the additions to the previous example to place the secondary chart on the
+secondary axis::
+
+    # ...
+    line_chart.add_series({
+        'name':       '=Sheet1!C1',
+        'categories': '=Sheet1!A2:A7',
+        'values':     '=Sheet1!C2:C7',
+        'y2_axis':    True,
+    })
+
+    # Add a chart title and some axis labels.
+    # ...
+    column_chart.set_y2_axis({'name': 'Target length (mm)'})
+
+
+.. image:: _images/chart_combined2.png
+   :scale: 75 %
+
+The examples above use the concept of a *primary* and *secondary* chart. The
+primary chart is the chart that defines the primary X and Y axis. It is also
+used for setting all chart properties apart from the secondary data
+series. For example the chart title and axes properties should be set via the
+primary chart.
+
+See also :ref:`ex_chart_combined` and :ref:`ex_chart_pareto` for more detailed
+examples.
+
+There are some limitations on combined charts:
+
+* Pie charts cannot currently be combined.
+* Scatter charts cannot currently be used as a primary chart but they can be
+  used as a secondary chart.
+* Bar charts can only combined secondary charts on a secondary axis. This is
+  an Excel limitation.
+
 
 Chartsheets
 -----------
@@ -1033,7 +1283,6 @@ Chart Limitations
 
 The following chart features aren't supported in XlsxWriter:
 
-* Secondary axes of a different chart type to the main chart type.
 * 3D charts and controls.
 * Bubble, Surface or other chart types not listed in :ref:`chart_class`.
 
@@ -1042,5 +1291,3 @@ Chart Examples
 --------------
 
 See :ref:`chart_examples`.
-
-

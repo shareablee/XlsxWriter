@@ -10,10 +10,10 @@ docs:
 pdf:
 	@make -C dev/docs latexpdf
 
-cleandocs:
+clean:
 	@make -C dev/docs clean
 
-alldocs: cleandocs docs pdf
+alldocs: clean docs pdf
 	@cp -r dev/docs/build/html docs
 	@cp -r dev/docs/build/latex/XlsxWriter.pdf docs
 
@@ -27,15 +27,15 @@ install:
 test:
 	@python -m unittest discover
 
+# Test with stable Python 2/3 releases.
 testpythons:
-	# Test with stable Python 2/3 releases.
 	@echo "Testing with Python 2.7.4:"
 	@~/.pythonbrew/pythons/Python-2.7.4/bin/python -m unittest discover
 	@echo "Testing with Python 3.4.1:"
 	@~/.pythonbrew/pythons/Python-3.4.1/bin/python -m unittest discover
 
+# Test with all stable Python 2/3 releases.
 testpythonsall:
-	# Test with all stable Python 2/3 releases.
 	@echo "Testing with Python 2.5.6:"
 	@~/.pythonbrew/pythons/Python-2.5.6/bin/py.test -q
 	@echo "Testing with Python 2.6.8:"
@@ -51,7 +51,7 @@ testpythonsall:
 	@echo "Testing with Python 3.4.1:"
 	@~/.pythonbrew/pythons/Python-3.4.1/bin/py.test -q
 
-pep8:
+testpep8:
 	@ls -1 xlsxwriter/*.py | egrep -v "theme|compat" | xargs pep8
 	@pep8 --ignore=E501 xlsxwriter/theme.py
 	@pep8 --ignore=E501 xlsxwriter/compat_collections.py
@@ -66,3 +66,4 @@ release: releasecheck
 	@python setup.py sdist bdist_wheel upload
 	@curl -X POST http://readthedocs.org/build/6277
 	@rm -rf build
+	@rm -rf XlsxWriter.egg-info/

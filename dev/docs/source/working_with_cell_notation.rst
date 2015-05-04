@@ -31,11 +31,19 @@ formulas::
 In general when using the XlsxWriter module you can use A1 notation anywhere
 you can use row-column notation.
 
+XlsxWriter supports Excels worksheet limits of 1,048,576 rows by 16,384
+columns.
+
+.. note::
+   Ranges in A1 notation must be in uppercase, like in Excel.
+
 .. note::
    In Excel it is also possible to use R1C1 notation. This is not
    supported by XlsxWriter.
 
 .. _abs_reference:
+
+
 
 Relative and Absolute cell references
 =====================================
@@ -57,6 +65,18 @@ See the Microsoft Office documentation for
 
 Some functions such as :func:`conditional_format()` require absolute
 references.
+
+
+Defined Names and Named Ranges
+==============================
+
+It is also possible to define and use "Defined names/Named ranges" in
+workbooks and worksheets, see :func:`define_name`::
+
+    workbook.define_name('Exchange_rate', '=0.96')
+    worksheet.write('B3', '=B2*Exchange_rate')
+
+See also :ref:`ex_defined_name`.
 
 
 .. _cell_utility:

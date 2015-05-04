@@ -2,7 +2,7 @@
 #
 # Tests for XlsxWriter.
 #
-# Copyright (c), 2013-2014, John McNamara, jmcnamara@cpan.org
+# Copyright (c), 2013-2015, John McNamara, jmcnamara@cpan.org
 #
 
 from ..excel_comparsion_test import ExcelComparisonTest
@@ -24,10 +24,8 @@ class TestCompareXLSXFiles(ExcelComparisonTest):
         self.got_filename = test_dir + '_test_' + filename
         self.exp_filename = test_dir + 'xlsx_files/' + filename
 
-        self.ignore_files = ['xl/printerSettings/printerSettings1.bin',
-                             'xl/worksheets/_rels/sheet1.xml.rels']
-        self.ignore_elements = {'[Content_Types].xml': ['<Default Extension="bin"'],
-                                'xl/worksheets/sheet1.xml': ['<pageMargins']}
+        self.ignore_files = []
+        self.ignore_elements = {'xl/worksheets/sheet1.xml': ['<pageMargins']}
 
     def test_create_file(self):
         """Test the creation of a simple XlsxWriter file with printer settings."""
@@ -38,6 +36,8 @@ class TestCompareXLSXFiles(ExcelComparisonTest):
 
         worksheet.set_start_page(1)
         worksheet.set_paper(9)
+
+        worksheet.vertical_dpi = 200
 
         worksheet.write('A1', 'Foo')
 

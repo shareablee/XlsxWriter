@@ -2,7 +2,7 @@
 #
 # Packager - A class for writing the Excel XLSX Worksheet file.
 #
-# Copyright 2013-2014, John McNamara, jmcnamara@cpan.org
+# Copyright 2013-2015, John McNamara, jmcnamara@cpan.org
 #
 
 # Standard packages.
@@ -229,17 +229,31 @@ class Packager(object):
         # Write the comment VML files.
         index = 1
         for worksheet in self.workbook.worksheets():
-            if not worksheet.has_vml:
+            if not worksheet.has_vml and not worksheet.has_header_vml:
                 continue
+            if worksheet.has_vml:
+                vml = Vml()
+                vml._set_xml_writer(self._filename('xl/drawings/vmlDrawing'
+                                                   + str(index) + '.vml'))
+                vml._assemble_xml_file(worksheet.vml_data_id,
+                                       worksheet.vml_shape_id,
+                                       worksheet.comments_list,
+                                       worksheet.buttons_list)
+                index += 1
 
-            vml = Vml()
-            vml._set_xml_writer(self._filename('xl/drawings/vmlDrawing'
-                                               + str(index) + '.vml'))
-            vml._assemble_xml_file(worksheet.vml_data_id,
-                                   worksheet.vml_shape_id,
-                                   worksheet.comments_array,
-                                   worksheet.buttons_array)
-            index += 1
+            if worksheet.has_header_vml:
+                vml = Vml()
+
+                vml._set_xml_writer(self._filename('xl/drawings/vmlDrawing'
+                                                   + str(index) + '.vml'))
+                vml._assemble_xml_file(worksheet.vml_header_id,
+                                       worksheet.vml_header_id * 1024,
+                                       None,
+                                       None,
+                                       worksheet.header_images_list)
+
+                self._write_vml_drawing_rels_file(worksheet, index)
+                index += 1
 
     def _write_comment_files(self):
         # Write the comment files.
@@ -251,7 +265,7 @@ class Packager(object):
             comment = Comments()
             comment._set_xml_writer(self._filename('xl/comments'
                                                    + str(index) + '.xml'))
-            comment._assemble_xml_file(worksheet.comments_array)
+            comment._assemble_xml_file(worksheet.comments_list)
             index += 1
 
     def _write_shared_strings_file(self):
@@ -525,6 +539,22 @@ class Packager(object):
                                                 + str(index) + '.xml.rels'))
             rels._assemble_xml_file()
 
+    def _write_vml_drawing_rels_file(self, worksheet, index):
+        # Write the vmlDdrawing .rels files for worksheets with images in
+        # headers or footers.
+
+        # Create the drawing .rels dir.
+        rels = Relationships()
+
+        for drawing_data in worksheet.vml_drawing_links:
+            rels._add_document_relationship(*drawing_data)
+
+        # Create .rels file such as /xl/drawings/_rels/vmlDrawing1.vml.rels.
+        rels._set_xml_writer(self._filename('xl/drawings/_rels/vmlDrawing'
+                                            + str(index)
+                                            + '.vml.rels'))
+        rels._assemble_xml_file()
+
     def _add_image_files(self):
         # Write the /xl/media/image?.xml files.
         workbook = self.workbook
@@ -565,9 +595,36 @@ class Packager(object):
             index += 1
 
     def _add_vba_project(self):
-        # Note: not implemented yet.
-        # Write the vbaProject.bin file.
+        # Copy in a vbaProject.bin file.
         vba_project = self.workbook.vba_project
+        vba_is_stream = self.workbook.vba_is_stream
 
         if not vba_project:
             return
+
+        xml_vba_name = 'xl/vbaProject.bin'
+
+        if not self.in_memory:
+            # In file mode we just write or copy the VBA file.
+            os_filename = self._filename(xml_vba_name)
+
+            if vba_is_stream:
+                # The data is in a byte stream. Write it to the target.
+                os_file = open(os_filename, mode='wb')
+                os_file.write(vba_project.getvalue())
+                os_file.close()
+            else:
+                copy(vba_project, os_filename)
+
+        else:
+            # For in-memory mode we read the vba into a stream.
+            if vba_is_stream:
+                # The data is already in a byte stream.
+                os_filename = vba_project
+            else:
+                vba_file = open(vba_project, mode='rb')
+                vba_data = vba_file.read()
+                os_filename = BytesIO(vba_data)
+                vba_file.close()
+
+            self.filenames.append((os_filename, xml_vba_name, True))

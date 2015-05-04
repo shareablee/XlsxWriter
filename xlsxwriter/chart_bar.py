@@ -2,10 +2,11 @@
 #
 # ChartBar - A class for writing the Excel XLSX Bar charts.
 #
-# Copyright 2013-2014, John McNamara, jmcnamara@cpan.org
+# Copyright 2013-2015, John McNamara, jmcnamara@cpan.org
 #
 
 from . import chart
+from warnings import warn
 
 
 class ChartBar(chart.Chart):
@@ -49,8 +50,39 @@ class ChartBar(chart.Chart):
         if self.subtype == 'percent_stacked':
             self.x_axis['defaults']['num_format'] = '0%'
 
+        # Set the available data label positions for this chart type.
+        self.label_position_default = 'outside_end'
+        self.label_positions = {
+            'center': 'ctr',
+            'inside_base': 'inBase',
+            'inside_end': 'inEnd',
+            'outside_end': 'outEnd'}
+
         self.set_x_axis({})
         self.set_y_axis({})
+
+    def combine(self, chart=None):
+        """
+        Create a combination chart with a secondary chart.
+
+        Note: Override parent method to add an extra check that is required
+        for Bar charts to ensure that their combined chart is on a secondary
+        axis.
+
+        Args:
+            chart: The secondary chart to combine with the primary chart.
+
+        Returns:
+            Nothing.
+
+        """
+        if chart is None:
+            return
+
+        if not chart.is_secondary:
+            warn('Charts combined with Bar charts must be on a secondary axis')
+
+        self.combined = chart
 
     ###########################################################################
     #
@@ -89,8 +121,8 @@ class ChartBar(chart.Chart):
 
         # Set a default overlap for stacked charts.
         if 'stacked' in self.subtype:
-            if self.series_overlap is None:
-                self.series_overlap = 100
+            if self.series_overlap_1 is None:
+                self.series_overlap_1 = 100
 
         self._xml_start_tag('c:barChart')
 
@@ -108,10 +140,16 @@ class ChartBar(chart.Chart):
         self._write_marker_value()
 
         # Write the c:gapWidth element.
-        self._write_gap_width(self.series_gap)
+        if args['primary_axes']:
+            self._write_gap_width(self.series_gap_1)
+        else:
+            self._write_gap_width(self.series_gap_2)
 
         # Write the c:overlap element.
-        self._write_overlap(self.series_overlap)
+        if args['primary_axes']:
+            self._write_overlap(self.series_overlap_1)
+        else:
+            self._write_overlap(self.series_overlap_2)
 
         # Write the c:axId elements
         self._write_axis_ids(args)

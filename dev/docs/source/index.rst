@@ -26,9 +26,10 @@ features such as formatting and many more, including:
 * Worksheet PNG/JPEG images.
 * Rich multi-format strings.
 * Cell comments.
+* Textboxes.
 * Memory optimisation mode for writing large files.
 
-It supports Python 2.5, 2.6, 2.7, 3.1, 3.2, 3.3, Jython and PyPy and uses
+It supports Python 2.5, 2.6, 2.7, 3.1, 3.2, 3.3, 3.4, Jython and PyPy and uses
 standard libraries only.
 
 .. only:: html
@@ -68,7 +69,6 @@ standard libraries only.
    :maxdepth: 1
 
    working_with_cell_notation.rst
-   working_with_formats.rst
    working_with_dates_and_time.rst
    working_with_colors.rst
    working_with_charts.rst
@@ -76,10 +76,12 @@ standard libraries only.
    working_with_data_validation.rst
    working_with_conditional_formats.rst
    working_with_tables.rst
+   working_with_textboxes.rst
    working_with_sparklines.rst
    working_with_cell_comments.rst
    working_with_outlines.rst
    working_with_memory.rst
+   working_with_macros.rst
 
 .. toctree::
    :maxdepth: 1

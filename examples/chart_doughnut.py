@@ -8,7 +8,7 @@
 # case since each segment is represented as a point so it is necessary to
 # assign formatting to each point in the series.
 #
-# Copyright 2013-2014, John McNamara, jmcnamara@cpan.org
+# Copyright 2013-2015, John McNamara, jmcnamara@cpan.org
 #
 import xlsxwriter
 
@@ -61,8 +61,8 @@ chart2 = workbook.add_chart({'type': 'doughnut'})
 # Configure the series and add user defined segment colours.
 chart2.add_series({
     'name': 'Doughnut sales data',
-    'categories': '=Sheet1!A2:A4',
-    'values':     '=Sheet1!B2:B4',
+    'categories': '=Sheet1!$A$2:$A$4',
+    'values':     '=Sheet1!$B$2:$B$4',
     'points': [
         {'fill': {'color': '#FA58D0'}},
         {'fill': {'color': '#61210B'}},
@@ -87,8 +87,8 @@ chart3 = workbook.add_chart({'type': 'doughnut'})
 # Configure the series.
 chart3.add_series({
     'name': 'Doughnut sales data',
-    'categories': '=Sheet1!A2:A4',
-    'values':     '=Sheet1!B2:B4',
+    'categories': '=Sheet1!$A$2:$A$4',
+    'values':     '=Sheet1!$B$2:$B$4',
 })
 
 # Add a title.
@@ -112,8 +112,8 @@ chart4 = workbook.add_chart({'type': 'doughnut'})
 # Configure the series.
 chart4.add_series({
     'name': 'Doughnut sales data',
-    'categories': '=Sheet1!A2:A4',
-    'values':     '=Sheet1!B2:B4',
+    'categories': '=Sheet1!$A$2:$A$4',
+    'values':     '=Sheet1!$B$2:$B$4',
     'points': [
         {'fill': {'color': '#FA58D0'}},
         {'fill': {'color': '#61210B'}},

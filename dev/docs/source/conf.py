@@ -42,14 +42,14 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'XlsxWriter'
-copyright = u'2013-2014, John McNamara'
+copyright = u'2013-2015, John McNamara'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
 #
 # The short X.Y version.
-version = '0.5.8'
+version = '0.7.2'
 # The full version, including alpha/beta/rc tags.
 release = version
 
@@ -268,7 +268,7 @@ texinfo_documents = [
 epub_title = u'XlsxWriter'
 epub_author = u'John McNamara'
 epub_publisher = u'John McNamara'
-epub_copyright = u'2013-2014, John McNamara'
+epub_copyright = u'2013-2015, John McNamara'
 
 # The language of the text. It defaults to the language option
 # or en if the language is not set.

@@ -2,7 +2,7 @@
 #
 # ChartPie - A class for writing the Excel XLSX Pie charts.
 #
-# Copyright 2013-2014, John McNamara, jmcnamara@cpan.org
+# Copyright 2013-2015, John McNamara, jmcnamara@cpan.org
 #
 
 from warnings import warn
@@ -34,6 +34,14 @@ class ChartPie(chart.Chart):
 
         self.vary_data_color = 1
         self.rotation = 0
+
+        # Set the available data label positions for this chart type.
+        self.label_position_default = 'best_fit'
+        self.label_positions = {
+            'center': 'ctr',
+            'inside_end': 'inEnd',
+            'outside_end': 'outEnd',
+            'best_fit': 'bestFit'}
 
     def set_rotation(self, rotation):
         """
@@ -134,7 +142,7 @@ class ChartPie(chart.Chart):
         if position == 'none':
             return
 
-        if not position in allowed:
+        if position not in allowed:
             return
 
         position = allowed[position]

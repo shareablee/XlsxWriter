@@ -2,7 +2,7 @@
 #
 # App - A class for writing the Excel XLSX App file.
 #
-# Copyright 2013-2014, John McNamara, jmcnamara@cpan.org
+# Copyright 2013-2015, John McNamara, jmcnamara@cpan.org
 #
 
 # Package imports.
@@ -164,7 +164,7 @@ class App(xmlwriter.XMLwriter):
 
     def _write_manager(self):
         # Write the <Manager> element.
-        if not 'manager' in self.properties:
+        if 'manager' not in self.properties:
             return
 
         self._xml_data_element('Manager', self.properties['manager'])
