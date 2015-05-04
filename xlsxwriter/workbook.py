@@ -1306,10 +1306,10 @@ class Workbook(xmlwriter.XMLwriter):
                 # Warn if the name is unknown since it indicates a user error
                 # in a chart series formula.
                 if sheetname not in worksheets:
-                    warn("Unknown worksheet reference '%s' in range "
-                         "'%s' passed to add_series()" % (sheetname, c_range))
-                    chart.formula_data[r_id] = []
-                    seen_ranges[c_range] = []
+                    #warn("Unknown worksheet reference '%s' in range "
+                    #     "'%s' passed to add_series()" % (sheetname, c_range))
+                    #chart.formula_data[r_id] = []
+                    #seen_ranges[c_range] = []
                     continue
 
                 # Find the worksheet object based on the sheet name.
