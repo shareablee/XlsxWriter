@@ -842,16 +842,29 @@ class Worksheet(xmlwriter.XMLwriter):
 
         # Excel limits escaped URL to 255 characters.
         if len(url) > 255:
-            warn("Ignoring URL '%s' > 255 characters since it exceeds "
-                 "Excel's limit for URLS" % url)
+            # Catch unicode error that can happen when encoding the
+            # URL into the string
+            try:
+                warn("Ignoring URL '%s' > 255 characters since it exceeds "
+                     "Excel's limit for URLS" % url)
+            except UnicodeEncodeError:
+                warn("Ignoring URL > 255 characters since it exceeds "
+                     "Excel's limit for URLS. Also couldn't parse because ascii")
+                pass
+
             return -3
 
         # Check the limit of URLS per worksheet.
         self.hlink_count += 1
 
         if self.hlink_count > 65530:
-            warn("Ignoring URL '%s' since it exceeds Excel's limit of "
-                 "65,530 URLS per worksheet." % url)
+            try:
+                warn("Ignoring URL '%s' since it exceeds Excel's limit of "
+                     "65,530 URLS per worksheet." % url)
+            except UnicodeEncodeError:
+                warn("Ignoring URL > 255 characters since it exceeds "
+                     "Excel's limit for URLS. Also couldn't parse because ascii")
+                pass
             return -5
 
         # Write previous row if in in-line string optimization mode.
